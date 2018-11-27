@@ -8,12 +8,12 @@ typedef enum {FAILED = 0, PASSED = !FAILED} TestStatus;
 TestStatus Buffercmp(uint8_t* pBuffer1, uint8_t* pBuffer2, uint16_t BufferLength);
 TestStatus FlagCompare=FAILED;
 
-uint8_t Write_24Cxx(uint8_t AddrSlave, uint8_t *txbuffData,  uint16_t write_address );
-uint8_t Read_24Cxx(uint8_t AddrSlave, uint16_t read_address,uint8_t *rxbuffData );
+uint8_t Write_24Cxx(uint8_t AddrSlave, uint8_t *txbuffData,  uint16_t write_address, uint32_t  NumberByteWrite );
+uint8_t Read_24Cxx(uint8_t AddrSlave, uint16_t read_address,uint8_t *rxbuffData, uint32_t  NumberByteRead );
 void delay_01ms(uint16_t period);
 uint32_t strlenbuff(uint8_t *str);
 uint8_t aRxBuffer2[9];
-uint8_t aTxBuffer2[9] = "ab1";
+uint8_t aTxBuffer2[9] = "abasd1";
 uint32_t lenbuff;
 int main(void)
 {
@@ -27,12 +27,7 @@ int main(void)
   GPIO_SetBits(GPIOD,GPIO_Pin_15);
   delay_01ms(10000);
   lenbuff=strlenbuff(aTxBuffer2);
-  if(lenbuff==3)
-  {
-  	GPIO_ResetBits(GPIOD,GPIO_Pin_12);
-  	delay_01ms(50000);
-  }
-  if ( Write_24Cxx(0xA0,aTxBuffer2,0x00)==0xFF)
+  if ( Write_24Cxx(0xA0,aTxBuffer2,0x00,lenbuff)==0xFF)
   {
       while(1)
       {
@@ -41,7 +36,7 @@ int main(void)
       }
   }
         delay_01ms(100);
-  if (Read_24Cxx(0xA0,0x00,aRxBuffer2)==0xFF)
+  if (Read_24Cxx(0xA0,0x00,aRxBuffer2,lenbuff)==0xFF)
   {
 
      while(1)
@@ -51,7 +46,7 @@ int main(void)
       }
   }
   delay_01ms(1000);
-  FlagCompare=Buffercmp(aRxBuffer2,aTxBuffer2,9);
+  FlagCompare=Buffercmp(aRxBuffer2,aTxBuffer2,lenbuff);
    if (FlagCompare==PASSED)
   {
       while(1)
@@ -132,7 +127,7 @@ void init_I2C1(void){
   I2C_Cmd(I2C1, ENABLE);
 }
 
-uint8_t Write_24Cxx(uint8_t AddrSlave, uint8_t *txbuffData, uint16_t write_address )
+uint8_t Write_24Cxx(uint8_t AddrSlave, uint8_t *txbuffData, uint16_t write_address,uint32_t  NumberByteWrite )
 {
   //uint8_t NumOfPage = 0, NumOfSingle = 0, count = 0;
   //uint16_t Addr = 0;
@@ -190,45 +185,41 @@ uint8_t Write_24Cxx(uint8_t AddrSlave, uint8_t *txbuffData, uint16_t write_addre
       if ((timeout--) == 0)
           return 0xFF;
     }
-
-  /* Send Data */
-  I2C_SendData(I2C1,  *txbuffData);
-
-  /* Test on I2C1 EV8 and clear it */
-  timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
-  while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_BYTE_TRANSMITTED))
-  {
-       /* If the timeout delay is exeeded, exit with error code */
-    if ((timeout--) == 0)
-       return 0xFF;
-  }
-  txbuffData++;
-  I2C_SendData(I2C1,  *txbuffData);
- 	timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
-  while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_BYTE_TRANSMITTED))
-  {
-       /* If the timeout delay is exeeded, exit with error code */
-    if ((timeout--) == 0)
-       return 0xFF;
-  }
-  txbuffData++;
-  I2C_SendData(I2C1,  *txbuffData);
-  /* Test on I2C1 EV8 and clear it */
-  timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
-  while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_BYTE_TRANSMITTED))
-  {
-       /* If the timeout delay is exeeded, exit with error code */
-    if ((timeout--) == 0)
-       return 0xFF;
-  }
-  /* Send I2C1 STOP Condition */
-  I2C_GenerateSTOP(I2C1, ENABLE);
-
-  /* If operation is OK, return 0 */
-  return 0;
-
+    // function send multi data create by thanh
+    while(lenbuff--)
+    {
+		if(lenbuff<2)
+    	{
+    		I2C_SendData(I2C1,  *txbuffData);
+  /*	 Test on I2C1 EV8 and clear it */
+  			timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
+  			while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_BYTE_TRANSMITTED))
+  			{
+    	   /* If the timeout delay is exeeded, exit with error code */
+    			if ((timeout--) == 0)
+    	   			return 0xFF;
+ 		 	}
+			/* Send I2C1 STOP Condition */
+			I2C_GenerateSTOP(I2C1, ENABLE);
+			/* If operation is OK, return 0 */
+			return 0;
+    	}
+    	else
+   		{
+			I2C_SendData(I2C1,  *txbuffData);
+			/* Test on I2C1 EV8 and clear it */
+			timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
+			while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_BYTE_TRANSMITTED))
+			{
+			     /* If the timeout delay is exeeded, exit with error code */
+			  if ((timeout--) == 0)
+			     return 0xFF;
+			}
+			txbuffData++;
+		}
+    }
 }
-uint8_t Read_24Cxx(uint8_t AddrSlave,  uint16_t read_address,uint8_t *rxbuffData )
+uint8_t Read_24Cxx(uint8_t AddrSlave,  uint16_t read_address,uint8_t *rxbuffData,  uint32_t  NumberByteRead )
 {
   uint32_t timeout = I2C_TIMEOUT_MAX;
   uint8_t upper_addr,lower_addr;
@@ -241,10 +232,7 @@ uint8_t Read_24Cxx(uint8_t AddrSlave,  uint16_t read_address,uint8_t *rxbuffData
       if((timeout--) == 0)
 					return 0xFF;
     }
-
-
   I2C_GenerateSTART(I2C1, ENABLE);
-
        /* Test on I2C1 EV5, Start trnsmitted successfully and clear it */
   while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_MODE_SELECT))
        {
@@ -275,9 +263,7 @@ uint8_t Read_24Cxx(uint8_t AddrSlave,  uint16_t read_address,uint8_t *rxbuffData
       if ((timeout--) == 0)
         return 0xFF;
     }
-
   I2C_SendData(I2C1, lower_addr);
-
   /* Test on I2C1 EV8 and clear it */
   timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
   while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_BYTE_TRANSMITTED))
@@ -287,9 +273,9 @@ uint8_t Read_24Cxx(uint8_t AddrSlave,  uint16_t read_address,uint8_t *rxbuffData
           return 0xFF;
     }
 
+ //feature thanh create
 //dont know
   I2C_GenerateSTART(I2C1, ENABLE);
-
   /* Test on I2C1 EV6 and clear it */
   timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
   while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_MODE_SELECT))
@@ -297,9 +283,7 @@ uint8_t Read_24Cxx(uint8_t AddrSlave,  uint16_t read_address,uint8_t *rxbuffData
        /* If the timeout delay is exeeded, exit with error code */
     if ((timeout--) == 0) return 0xFF;
   }
-
   I2C_Send7bitAddress(I2C1, AddrSlave, I2C_Direction_Receiver);
-
   /* Test on I2C1 EV6 and clear it */
   timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
   while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED))
@@ -308,41 +292,41 @@ uint8_t Read_24Cxx(uint8_t AddrSlave,  uint16_t read_address,uint8_t *rxbuffData
       if ((timeout--) == 0) return 0xFF;
   }
 		timeout = I2C_TIMEOUT_MAX;
-	   while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_BYTE_RECEIVED))
-  {
-        /* If the timeout delay is exeeded, exit with error code */
-      if ((timeout--) == 0) return 0xFF;
-  }
-  *rxbuffData= I2C_ReceiveData(I2C1);
-
-  rxbuffData++;
-  timeout = I2C_TIMEOUT_MAX;
-  while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_BYTE_RECEIVED))
-  {
-        /* If the timeout delay is exeeded, exit with error code */
-      if ((timeout--) == 0) return 0xFF;
-  }
-  *rxbuffData= I2C_ReceiveData(I2C1);
-
-  rxbuffData++;
-  /* Prepare an NACK for the next data received */
-  I2C_AcknowledgeConfig(I2C1, DISABLE);
-
-  /* Test on I2C1 EV7 and clear it */
-  timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
-  while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_BYTE_RECEIVED))
-  {
-        /* If the timeout delay is exeeded, exit with error code */
-        if ((timeout--) == 0) return 0xFF;
-  }
-  I2C_GenerateSTOP(I2C1, ENABLE);
-
-  /* Receive the Data */
-    *rxbuffData= I2C_ReceiveData(I2C1);
-    /*!< Re-Enable Acknowledgement to be ready for another reception */
-  I2C_AcknowledgeConfig(I2C1, ENABLE);
-  return 0;
+//receive multi byte
+	while(lenbuff--)
+	{
+		//receive one byte
+		if(lenbuff<2)
+		{
+			I2C_AcknowledgeConfig(I2C1, DISABLE);
+			/* Test on I2C1 EV7 and clear it */
+			timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
+			while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_BYTE_RECEIVED))
+			{
+			      /* If the timeout delay is exeeded, exit with error code */
+			      if ((timeout--) == 0) return 0xFF;
+			}
+			I2C_GenerateSTOP(I2C1, ENABLE);
+			/* Receive the Data */
+			 *rxbuffData= I2C_ReceiveData(I2C1);
+			/*!< Re-Enable Acknowledgement to be ready for another reception */
+			I2C_AcknowledgeConfig(I2C1, ENABLE);
+			return 0;
+		}
+		else
+		{
+			timeout = I2C_TIMEOUT_MAX;
+			while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_BYTE_RECEIVED))
+			{
+			      /* If the timeout delay is exeeded, exit with error code */
+			    if ((timeout--) == 0) return 0xFF;
+			}
+			*rxbuffData= I2C_ReceiveData(I2C1);
+			rxbuffData++;
+		}
+	}
 }
+
 TestStatus Buffercmp(uint8_t* pBuffer1, uint8_t* pBuffer2, uint16_t BufferLength)
 {
   while(BufferLength--)
