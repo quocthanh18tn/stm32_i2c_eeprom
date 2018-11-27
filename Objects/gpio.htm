@@ -3,7 +3,7 @@
 <title>Static Call Graph - [.\Objects\gpio.axf]</title></head>
 <body><HR>
 <H1>Static Call Graph for image .\Objects\gpio.axf</H1><HR>
-<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060422: Last Updated: Tue Nov 27 10:40:51 2018
+<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060422: Last Updated: Tue Nov 27 17:26:05 2018
 <BR><P>
 <H3>Maximum Stack Usage =        108 bytes + Unknown(Functions without stacksize, Cycles, Untraceable Function Pointers)</H3><H3>
 Call chain for Maximum Stack Depth:</H3>
@@ -683,8 +683,8 @@ Global Symbols
 <BR>[Called By]<UL><LI><a href="#[77]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;I2C_Init
 </UL>
 
-<P><STRONG><a name="[79]"></a>Read_24Cxx</STRONG> (Thumb, 444 bytes, Stack size 32 bytes, main.o(i.Read_24Cxx))
-<BR><BR>[Stack]<UL><LI>Max Depth = 48<LI>Call Chain = Read_24Cxx &rArr; I2C_CheckEvent
+<P><STRONG><a name="[79]"></a>Read_24Cxx</STRONG> (Thumb, 422 bytes, Stack size 24 bytes, main.o(i.Read_24Cxx))
+<BR><BR>[Stack]<UL><LI>Max Depth = 40<LI>Call Chain = Read_24Cxx &rArr; I2C_CheckEvent
 </UL>
 <BR>[Calls]<UL><LI><a href="#[7f]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;I2C_SendData
 <LI><a href="#[7d]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;I2C_Send7bitAddress
@@ -714,8 +714,8 @@ Global Symbols
 <P><STRONG><a name="[7]"></a>UsageFault_Handler</STRONG> (Thumb, 4 bytes, Stack size 0 bytes, system_timetick.o(i.UsageFault_Handler))
 <BR>[Address Reference Count : 1]<UL><LI> startup_stm32f40_41xxx.o(RESET)
 </UL>
-<P><STRONG><a name="[83]"></a>Write_24Cxx</STRONG> (Thumb, 336 bytes, Stack size 32 bytes, main.o(i.Write_24Cxx))
-<BR><BR>[Stack]<UL><LI>Max Depth = 48<LI>Call Chain = Write_24Cxx &rArr; I2C_CheckEvent
+<P><STRONG><a name="[83]"></a>Write_24Cxx</STRONG> (Thumb, 324 bytes, Stack size 24 bytes, main.o(i.Write_24Cxx))
+<BR><BR>[Stack]<UL><LI>Max Depth = 40<LI>Call Chain = Write_24Cxx &rArr; I2C_CheckEvent
 </UL>
 <BR>[Calls]<UL><LI><a href="#[7f]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;I2C_SendData
 <LI><a href="#[7d]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;I2C_Send7bitAddress

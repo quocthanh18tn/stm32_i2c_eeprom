@@ -10,7 +10,7 @@
 .\objects\system_timetick.o: system_stm32f4xx.h
 .\objects\system_timetick.o: stm32f4xx_conf.h
 .\objects\system_timetick.o: .\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_adc.h
-.\objects\system_timetick.o: ..\i2c_EEPROM\stm32f4xx.h
+.\objects\system_timetick.o: H:\keilc5\Keil\STM32F4xx_DFP\2.13.0\Drivers\CMSIS\Device\ST\STM32F4xx\Include\stm32f4xx.h
 .\objects\system_timetick.o: .\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_crc.h
 .\objects\system_timetick.o: .\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_dbgmcu.h
 .\objects\system_timetick.o: .\STM32F4xx_StdPeriph_Driver\inc\stm32f4xx_dma.h
