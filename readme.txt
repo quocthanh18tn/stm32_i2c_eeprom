@@ -1,0 +1,1 @@
+ USART 1 and USART6 are connected to APB2 bus and able to communicate at speeds of up to 10.5 Mbit/s. USART2, USART3, UART4, UART5 are connected to APB1 bus and able to communicate at speeds of up to 5.25 Mbit/s.
