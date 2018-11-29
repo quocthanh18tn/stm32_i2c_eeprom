@@ -3,6 +3,8 @@
 
 #define I2C_TIMEOUT_MAX         ((uint32_t)(10 * 5000))
 #define BUFFER_SIZE2             (countof(aTxBuffer2)-1)
+#define DMALENGHT             4
+#define BUFFER_EEPROM_WRITE             65500
 
 #define countof(a) (sizeof(a) / sizeof(*(a)))
 typedef enum {FAILED = 0, PASSED = !FAILED} TestStatus;
@@ -19,7 +21,13 @@ uint32_t strlenbuff(uint8_t *str);
 uint8_t Write_Page(uint8_t AddrSlave, uint8_t *txbuffData, uint16_t write_address, uint32_t NumberByteWrite);
 // uint8_t WaitForStandbyState(uint8_t AddrSlave);
 
-uint8_t aTxBuffer2[] = "thanh dep trai ganh btl cua 3 em kia. thay thanh dep trai du khong. chu thanh dep trai thay du lam";
+//rxbuff cho DMA size 4
+uint8_t RxDMA[DMALENGHT];
+uint8_t BufferEEPROMWrite[BUFFER_EEPROM_WRITE];
+uint16_t  index = 0;
+
+//
+uint8_t aTxBuffer2[] = "thanh dep trai ganh btl cua 3 em kia. thay thanh dep trai du khong. chu thanh dep trai thay du lam co dieu tai sao no chay sai tao cung khong hieu tai sao day la project test choi cho vui thoi ma";
 uint8_t aRxBuffer2[BUFFER_SIZE2];
 uint32_t lenbuff;
 int main(void)
@@ -27,11 +35,13 @@ int main(void)
   /* Enable SysTick at 10ms interrupt */
   SysTick_Config(SystemCoreClock/100);
   init_I2C1();
+	    usart_init();
+
   //GPIO_ResetBits(GPIOD,GPIO_Pin_12);
-  GPIO_SetBits(GPIOD,GPIO_Pin_12);
-  GPIO_SetBits(GPIOD,GPIO_Pin_13);
-  GPIO_SetBits(GPIOD,GPIO_Pin_14);
-  GPIO_SetBits(GPIOD,GPIO_Pin_15);
+  // GPIO_SetBits(GPIOD,GPIO_Pin_12);
+  // GPIO_SetBits(GPIOD,GPIO_Pin_13);
+  // GPIO_SetBits(GPIOD,GPIO_Pin_14);
+  // GPIO_SetBits(GPIOD,GPIO_Pin_15);
 
   lenbuff=strlenbuff(aTxBuffer2);
   // if ( Write_24Cxx(0xA0,aTxBuffer2,0x0020,lenbuff)==0xFF)
@@ -42,12 +52,12 @@ int main(void)
   //       delay_01ms(10000);
   //     }
   // }
- Write_Page(0xA0,aTxBuffer2,0x0000,lenbuff);
+ Write_Page(0xA0,aTxBuffer2,0x00ff,lenbuff);
         delay_01ms(1000);
   //standmode between read write
 //WaitForStandbyState(0xA0);
   //
-  if (Read_24Cxx(0xA0,aRxBuffer2,0x0000,lenbuff)==0xFF)
+  if (Read_24Cxx(0xA0,aRxBuffer2,0x00ff,lenbuff)==0xFF)
   {
 
      while(1)
@@ -60,11 +70,12 @@ int main(void)
   FlagCompare=Buffercmp(aRxBuffer2,aTxBuffer2,lenbuff);
    if (FlagCompare==PASSED)
   {
-    usart_init();
+		DMA_Cmd(DMA1_Stream4, ENABLE);
+
       while(1)
       {
         GPIO_ToggleBits(GPIOD, GPIO_Pin_14);
-        delay_01ms(10000);
+        delay_01ms(5000);
       }
   }
   else if (FlagCompare!=PASSED)
@@ -237,64 +248,89 @@ uint8_t Write_24Cxx(uint8_t AddrSlave, uint8_t *txbuffData, uint16_t write_addre
 uint8_t Write_Page(uint8_t AddrSlave, uint8_t *txbuffData, uint16_t write_address, uint32_t NumberByteWrite)
 {
   uint32_t Page = NumberByteWrite/32;
-  uint32_t SinglePage=NumberByteWrite%32;
-  while(Page>0)
+  uint32_t SinglePage = NumberByteWrite%32;
+  uint32_t AddressAligned = write_address%32;
+  uint32_t RemainAddressAligned = 32 - AddressAligned;
+
+  if (AddressAligned==0)
   {
-    if ( Write_24Cxx(AddrSlave,txbuffData,write_address,32)==0xFF)
+
+      while(Page>0)
       {
-        while(1)
+        if ( Write_24Cxx(AddrSlave,txbuffData,write_address,32)==0xFF)
+          {
+            while(1)
+            {
+              GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
+              delay_01ms(10000);
+            }
+          }
+          delay_01ms(100);
+    			txbuffData+=32;
+          write_address+=32;
+
+          Page--;
+      }
+      // else
+      if (Page==0)
         {
-          GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
-          delay_01ms(10000);
+          if (Write_24Cxx(AddrSlave,txbuffData,write_address,SinglePage)==0xFF)
+          {
+           while(1)
+           {
+             GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
+             delay_01ms(10000);
+           }
+          }
         }
-      }
-      delay_01ms(100);
-			txbuffData+=32;
-      write_address+=32;
-
-      Page--;
+				return 0;
   }
-  // else
-  if (Page==0)
-    {
-      if (Write_24Cxx(AddrSlave,txbuffData,write_address,SinglePage)==0xFF)
-      {
-       while(1)
+  //not aligned
+  else
+  {
+      if ( Write_24Cxx(AddrSlave,txbuffData,write_address,RemainAddressAligned)==0xFF)
        {
-         GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
-         delay_01ms(10000);
+         while(1)
+         {
+           GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
+           delay_01ms(10000);
+         }
        }
+       delay_01ms(100);
+       txbuffData+=RemainAddressAligned;
+       write_address+=RemainAddressAligned;
+       Page=(NumberByteWrite - RemainAddressAligned)/32;
+       SinglePage=(NumberByteWrite - RemainAddressAligned)%32;
+
+      while(Page>0)
+      {
+        if ( Write_24Cxx(AddrSlave,txbuffData,write_address,32)==0xFF)
+          {
+            while(1)
+            {
+              GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
+              delay_01ms(10000);
+            }
+          }
+          delay_01ms(100);
+          txbuffData+=32;
+          write_address+=32;
+          Page--;
       }
-    }
-
-
-  // while(Page)
-  //   {
-  //     if (Write_24Cxx(AddrSlave,txbuffData,write_address,32)==0xFF)
-  //     {
-  //      while(1)
-  //      {
-  //        GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
-  //        delay_01ms(10000);
-  //      }
-  //     }
-
-  //     Page--;
-  //     txbuffData+=32;
-  //     write_address+=32;
-  //   }
-  // if (Page==0)
-  // {
-  //     if (Write_24Cxx(AddrSlave,txbuffData,write_address,SinglePage)==0xFF)
-  //     {
-  //      while(1)
-  //      {
-  //        GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
-  //        delay_01ms(10000);
-  //      }
-  //     }
-  // }
-  // return 0;
+      // else
+      if (Page==0)
+        {
+          if (Write_24Cxx(AddrSlave,txbuffData,write_address,SinglePage)==0xFF)
+          {
+           while(1)
+           {
+             GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
+             delay_01ms(10000);
+           }
+          }
+        }
+				return 0;
+  }
 }
 
 
@@ -456,7 +492,7 @@ void usart_init(void)
   GPIO_InitTypeDef  GPIO_InitStructure;
   USART_InitTypeDef USART_InitStructure;
   DMA_InitTypeDef   DMA_InitStructure;
-  NVIC_InitTypeDef  NVIC_InitStructure;
+	NVIC_InitTypeDef  NVIC_InitStructure;
 
   /* Enable GPIO clock */
   RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);
@@ -503,9 +539,10 @@ void usart_init(void)
   /* Enable UART4 DMA */
   /* DMA1 Stream2 Channel4 for USART4 Tx configuration */
   USART_DMACmd(UART4, USART_DMAReq_Tx, ENABLE);
+  USART_DMACmd(UART4, USART_DMAReq_Rx, ENABLE);
 
 
-  /* DMA1 Stream2 Channel4 for USART4 Rx configuration */
+  /* DMA1 Stream2 Channel4 for USART4 Tx configuration */
   DMA_InitStructure.DMA_Channel = DMA_Channel_4;
   DMA_InitStructure.DMA_PeripheralBaseAddr = (uint32_t)&UART4->DR;
   DMA_InitStructure.DMA_Memory0BaseAddr = (uint32_t)aRxBuffer2;
@@ -522,6 +559,42 @@ void usart_init(void)
   DMA_InitStructure.DMA_MemoryBurst = DMA_MemoryBurst_Single;
   DMA_InitStructure.DMA_PeripheralBurst = DMA_PeripheralBurst_Single;
   DMA_Init(DMA1_Stream4, &DMA_InitStructure);
-  DMA_Cmd(DMA1_Stream4, ENABLE);
 
+// viet them RX UART
+  DMA_InitStructure.DMA_Memory0BaseAddr = (uint32_t)RxDMA;
+  DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralToMemory;
+  DMA_InitStructure.DMA_BufferSize = DMALENGHT;
+  DMA_Init(DMA1_Stream2, &DMA_InitStructure);
+  DMA_Cmd(DMA1_Stream2, ENABLE);
+
+  /* Enable DMA Interrupt to the highest priority */
+  NVIC_InitStructure.NVIC_IRQChannel = DMA1_Stream2_IRQn;
+  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;
+  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+  NVIC_Init(&NVIC_InitStructure);
+
+  /* Transfer complete interrupt mask */
+  DMA_ITConfig(DMA1_Stream2, DMA_IT_TC, ENABLE);
+}
+
+void DMA1_Stream2_IRQHandler(void)
+{
+  uint8_t i;
+  uint8_t;
+  /* Clear the DMA1_Stream2 TCIF2 pending bit */
+  DMA_ClearITPendingBit(DMA1_Stream2, DMA_IT_TCIF2);
+  if ((RxDMA[0]-'0')==2)
+    GPIO_SetBits(GPIOD,GPIO_Pin_12);
+  else
+  GPIO_SetBits(GPIOD,GPIO_Pin_13);
+  // for(i=0; i<DMALENGHT; i++)
+  //   if (RxDMA[i]=='*')
+  //   {
+
+  //   }
+  //   BufferEEPROMWrite[index + i] = RxDMA[i];
+  // index = index + DMALENGHT;
+
+  DMA_Cmd(DMA1_Stream2, ENABLE);
 }

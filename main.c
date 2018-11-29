@@ -3,6 +3,8 @@
 
 #define I2C_TIMEOUT_MAX         ((uint32_t)(10 * 5000))
 #define BUFFER_SIZE2             (countof(aTxBuffer2)-1)
+#define DMALENGHT             4
+#define BUFFER_EEPROM_WRITE             20
 
 #define countof(a) (sizeof(a) / sizeof(*(a)))
 typedef enum {FAILED = 0, PASSED = !FAILED} TestStatus;
@@ -19,7 +21,13 @@ uint32_t strlenbuff(uint8_t *str);
 uint8_t Write_Page(uint8_t AddrSlave, uint8_t *txbuffData, uint16_t write_address, uint32_t NumberByteWrite);
 // uint8_t WaitForStandbyState(uint8_t AddrSlave);
 
-uint8_t aTxBuffer2[] = "thanh dep trai ganh btl cua 3 em kia. thay thanh dep trai du khong. chu thanh dep trai thay du lam";
+//rxbuff cho DMA size 4
+uint8_t RxDMA[DMALENGHT];
+uint8_t BufferEEPROMWrite[BUFFER_EEPROM_WRITE];
+uint16_t  index = 0;
+
+//
+uint8_t aTxBuffer2[] = "thanh dep trai ganh btl cua 3 em kia. thay thanh dep trai du khong. chu thanh dep trai thay du lam co dieu tai sao no chay sai tao cung khong hieu tai sao day la project test choi cho vui thoi ma";
 uint8_t aRxBuffer2[BUFFER_SIZE2];
 uint32_t lenbuff;
 int main(void)
@@ -27,63 +35,46 @@ int main(void)
   /* Enable SysTick at 10ms interrupt */
   SysTick_Config(SystemCoreClock/100);
   init_I2C1();
-  //GPIO_ResetBits(GPIOD,GPIO_Pin_12);
-  GPIO_SetBits(GPIOD,GPIO_Pin_12);
-  GPIO_SetBits(GPIOD,GPIO_Pin_13);
-  GPIO_SetBits(GPIOD,GPIO_Pin_14);
-  GPIO_SetBits(GPIOD,GPIO_Pin_15);
+	usart_init();
 
   lenbuff=strlenbuff(aTxBuffer2);
-  // if ( Write_24Cxx(0xA0,aTxBuffer2,0x0020,lenbuff)==0xFF)
-  // {
-  //     while(1)
-  //     {
-  //       GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
-  //       delay_01ms(10000);
-  //     }
-  // }
- Write_Page(0xA0,aTxBuffer2,0x0000,lenbuff);
+  Write_Page(0xA0,aTxBuffer2,0x00ff,lenbuff);
         delay_01ms(1000);
-  //standmode between read write
-//WaitForStandbyState(0xA0);
-  //
-  if (Read_24Cxx(0xA0,aRxBuffer2,0x0000,lenbuff)==0xFF)
-  {
-
-     while(1)
-      {
-        GPIO_ToggleBits(GPIOD, GPIO_Pin_13);
-        delay_01ms(10000);
-      }
-  }
+  if (Read_24Cxx(0xA0,aRxBuffer2,0x00ff,lenbuff)==0xFF)
+    {
+       while(1)
+        {
+          GPIO_ToggleBits(GPIOD, GPIO_Pin_13);
+          delay_01ms(10000);
+        }
+    }
   delay_01ms(1000);
+
   FlagCompare=Buffercmp(aRxBuffer2,aTxBuffer2,lenbuff);
    if (FlagCompare==PASSED)
-  {
-    usart_init();
-      while(1)
       {
-        GPIO_ToggleBits(GPIOD, GPIO_Pin_14);
-        delay_01ms(10000);
+    		DMA_Cmd(DMA1_Stream4, ENABLE);
+
+          while(1)
+          {
+            GPIO_ToggleBits(GPIOD, GPIO_Pin_14);
+            delay_01ms(5000);
+          }
       }
-  }
-  else if (FlagCompare!=PASSED)
-  {
-    while(1)
-    {
-      GPIO_ToggleBits(GPIOD, GPIO_Pin_15);
-        delay_01ms(10000);
-    }
+   else if (FlagCompare!=PASSED)
+      {
+        while(1)
+        {
+          GPIO_ToggleBits(GPIOD, GPIO_Pin_15);
+            delay_01ms(10000);
+        }
 
-  }
-  while(1){
-
-  }
+      }
+   while(1);
 }
 
 
 void init_I2C1(void){
-
   GPIO_InitTypeDef GPIO_InitStruct; // this is for the GPIO pins used as I2C1SDA and I2C1SCL
   GPIO_InitTypeDef GPIO_Output;     // For some debugging LEDs
   I2C_InitTypeDef I2C_InitStruct; // this is for the I2C1 initilization
@@ -124,111 +115,93 @@ void init_I2C1(void){
 
    /* Configure I2C1 */
   I2C_DeInit(I2C1);
+   /* Enable the I2C peripheral */
 
-        /* Enable the I2C peripheral */
-
-        /* Set the I2C structure parameters */
+   /* Set the I2C structure parameters */
   I2C_InitStruct.I2C_Mode = I2C_Mode_I2C;
   I2C_InitStruct.I2C_DutyCycle = I2C_DutyCycle_2;
   I2C_InitStruct.I2C_OwnAddress1 = 0xEE;
   I2C_InitStruct.I2C_Ack = I2C_Ack_Enable;
   I2C_InitStruct.I2C_AcknowledgedAddress = I2C_AcknowledgedAddress_7bit;
   I2C_InitStruct.I2C_ClockSpeed = 100000;
-        /* Initialize the I2C peripheral w/ selected parameters */
+   /* Initialize the I2C peripheral w/ selected parameters */
   I2C_Init(I2C1,&I2C_InitStruct);
   I2C_Cmd(I2C1, ENABLE);
 }
 
 uint8_t Write_24Cxx(uint8_t AddrSlave, uint8_t *txbuffData, uint16_t write_address,uint32_t  NumberByteWrite )
 {
-  //uint8_t NumOfPage = 0, NumOfSingle = 0, count = 0;
-  //uint16_t Addr = 0;
   uint32_t timeout = I2C_TIMEOUT_MAX;
 
   while(I2C_GetFlagStatus(I2C1, I2C_FLAG_BUSY))
     {
-
       if((timeout--) == 0) return 0xFF;
     }
 
   I2C_GenerateSTART(I2C1, ENABLE);
-
-       /* Test on I2C1 EV5, Start trnsmitted successfully and clear it */
+   /* Test on I2C1 EV5, Start trnsmitted successfully and clear it */
   while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_MODE_SELECT))
-       {
-
-            /* If the timeout delay is exeeded, exit with error code */
-          if ((timeout--) == 0)
-            return 0xFF;
-       }
-       //send address slave and mode transmitter to write data
+   {
+      if ((timeout--) == 0) return 0xFF;
+   }
+   //send address slave and mode transmitter to write data
   I2C_Send7bitAddress(I2C1, AddrSlave, I2C_Direction_Transmitter);
   timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
   while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED))
-       {
-           /* If the timeout delay is exeeded, exit with error code */
-          if ((timeout--) == 0)
-             return 0xFF;
-       }
+   {
+      if ((timeout--) == 0) return 0xFF;
+   }
 
   /* Send I2C1 location address LSB */
   I2C_SendData(I2C1, (uint8_t)((write_address & 0xFF00) >> 8));
-
     /* Test on I2C1 EV8 and clear it */
   timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
   while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_BYTE_TRANSMITTING))
     {
-      /* If the timeout delay is exeeded, exit with error code */
-      if ((timeout--) == 0)
-        return 0xFF;
+      if ((timeout--) == 0) return 0xFF;
     }
 
   I2C_SendData(I2C1, (uint8_t)(write_address & 0x00FF));
-
   /* Test on I2C1 EV8 and clear it */
   timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
   while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_BYTE_TRANSMITTING))
     {
-            /* If the timeout delay is exeeded, exit with error code */
-      if ((timeout--) == 0)
-          return 0xFF;
+      if ((timeout--) == 0) return 0xFF;
     }
     // function send multi data create by thanh
-    while(NumberByteWrite)
+  while(NumberByteWrite)
     {
-    if(NumberByteWrite<2)
-      {
+      if(NumberByteWrite<2)
+        {
+          I2C_SendData(I2C1,  *txbuffData);
+    /*   Test on I2C1 EV8 and clear it */
+          timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
+          while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_BYTE_TRANSMITTED))
+          {
+            if ((timeout--) == 0) return 0xFF;
+        }
+        (void)I2C1->SR1;
+        (void)I2C1->SR2;
+        /* Send I2C1 STOP Condition */
+        I2C_GenerateSTOP(I2C1, ENABLE);
+        /* If operation is OK, return 0 */
+        return 0;
+       }
+      else
+       {
         I2C_SendData(I2C1,  *txbuffData);
-  /*   Test on I2C1 EV8 and clear it */
+        /* Test on I2C1 EV8 and clear it */
         timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
         while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_BYTE_TRANSMITTED))
         {
-         /* If the timeout delay is exeeded, exit with error code */
+             /* If the timeout delay is exeeded, exit with error code */
           if ((timeout--) == 0)
-              return 0xFF;
+             return 0xFF;
+        }
+        txbuffData++;
       }
-      (void)I2C1->SR1;
-      (void)I2C1->SR2;
-      /* Send I2C1 STOP Condition */
-      I2C_GenerateSTOP(I2C1, ENABLE);
-      /* If operation is OK, return 0 */
-      return 0;
-     }
-    else
-     {
-      I2C_SendData(I2C1,  *txbuffData);
-      /* Test on I2C1 EV8 and clear it */
-      timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
-      while(!I2C_CheckEvent(I2C1, I2C_EVENT_MASTER_BYTE_TRANSMITTED))
-      {
-           /* If the timeout delay is exeeded, exit with error code */
-        if ((timeout--) == 0)
-           return 0xFF;
+      NumberByteWrite--;
       }
-      txbuffData++;
-    }
-    NumberByteWrite--;
-    }
       I2C_GenerateSTOP(I2C1, ENABLE);
 
     return 0;
@@ -237,64 +210,89 @@ uint8_t Write_24Cxx(uint8_t AddrSlave, uint8_t *txbuffData, uint16_t write_addre
 uint8_t Write_Page(uint8_t AddrSlave, uint8_t *txbuffData, uint16_t write_address, uint32_t NumberByteWrite)
 {
   uint32_t Page = NumberByteWrite/32;
-  uint32_t SinglePage=NumberByteWrite%32;
-  while(Page>0)
+  uint32_t SinglePage = NumberByteWrite%32;
+  uint32_t AddressAligned = write_address%32;
+  uint32_t RemainAddressAligned = 32 - AddressAligned;
+
+  if (AddressAligned==0)
   {
-    if ( Write_24Cxx(AddrSlave,txbuffData,write_address,32)==0xFF)
+
+      while(Page>0)
       {
-        while(1)
+        if ( Write_24Cxx(AddrSlave,txbuffData,write_address,32)==0xFF)
+          {
+            while(1)
+            {
+              GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
+              delay_01ms(10000);
+            }
+          }
+          delay_01ms(100);
+    			txbuffData+=32;
+          write_address+=32;
+
+          Page--;
+      }
+      // else
+      if (Page==0)
         {
-          GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
-          delay_01ms(10000);
+          if (Write_24Cxx(AddrSlave,txbuffData,write_address,SinglePage)==0xFF)
+          {
+           while(1)
+           {
+             GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
+             delay_01ms(10000);
+           }
+          }
         }
-      }
-      delay_01ms(100);
-			txbuffData+=32;
-      write_address+=32;
-
-      Page--;
+				return 0;
   }
-  // else
-  if (Page==0)
-    {
-      if (Write_24Cxx(AddrSlave,txbuffData,write_address,SinglePage)==0xFF)
-      {
-       while(1)
+  //not aligned
+  else
+  {
+      if ( Write_24Cxx(AddrSlave,txbuffData,write_address,RemainAddressAligned)==0xFF)
        {
-         GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
-         delay_01ms(10000);
+         while(1)
+         {
+           GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
+           delay_01ms(10000);
+         }
        }
+       delay_01ms(100);
+       txbuffData+=RemainAddressAligned;
+       write_address+=RemainAddressAligned;
+       Page=(NumberByteWrite - RemainAddressAligned)/32;
+       SinglePage=(NumberByteWrite - RemainAddressAligned)%32;
+
+      while(Page>0)
+      {
+        if ( Write_24Cxx(AddrSlave,txbuffData,write_address,32)==0xFF)
+          {
+            while(1)
+            {
+              GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
+              delay_01ms(10000);
+            }
+          }
+          delay_01ms(100);
+          txbuffData+=32;
+          write_address+=32;
+          Page--;
       }
-    }
-
-
-  // while(Page)
-  //   {
-  //     if (Write_24Cxx(AddrSlave,txbuffData,write_address,32)==0xFF)
-  //     {
-  //      while(1)
-  //      {
-  //        GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
-  //        delay_01ms(10000);
-  //      }
-  //     }
-
-  //     Page--;
-  //     txbuffData+=32;
-  //     write_address+=32;
-  //   }
-  // if (Page==0)
-  // {
-  //     if (Write_24Cxx(AddrSlave,txbuffData,write_address,SinglePage)==0xFF)
-  //     {
-  //      while(1)
-  //      {
-  //        GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
-  //        delay_01ms(10000);
-  //      }
-  //     }
-  // }
-  // return 0;
+      // else
+      if (Page==0)
+        {
+          if (Write_24Cxx(AddrSlave,txbuffData,write_address,SinglePage)==0xFF)
+          {
+           while(1)
+           {
+             GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
+             delay_01ms(10000);
+           }
+          }
+        }
+				return 0;
+  }
 }
 
 
@@ -456,7 +454,7 @@ void usart_init(void)
   GPIO_InitTypeDef  GPIO_InitStructure;
   USART_InitTypeDef USART_InitStructure;
   DMA_InitTypeDef   DMA_InitStructure;
-  NVIC_InitTypeDef  NVIC_InitStructure;
+	NVIC_InitTypeDef  NVIC_InitStructure;
 
   /* Enable GPIO clock */
   RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);
@@ -503,9 +501,10 @@ void usart_init(void)
   /* Enable UART4 DMA */
   /* DMA1 Stream2 Channel4 for USART4 Tx configuration */
   USART_DMACmd(UART4, USART_DMAReq_Tx, ENABLE);
+  USART_DMACmd(UART4, USART_DMAReq_Rx, ENABLE);
 
 
-  /* DMA1 Stream2 Channel4 for USART4 Rx configuration */
+  /* DMA1 Stream2 Channel4 for USART4 Tx configuration */
   DMA_InitStructure.DMA_Channel = DMA_Channel_4;
   DMA_InitStructure.DMA_PeripheralBaseAddr = (uint32_t)&UART4->DR;
   DMA_InitStructure.DMA_Memory0BaseAddr = (uint32_t)aRxBuffer2;
@@ -522,6 +521,41 @@ void usart_init(void)
   DMA_InitStructure.DMA_MemoryBurst = DMA_MemoryBurst_Single;
   DMA_InitStructure.DMA_PeripheralBurst = DMA_PeripheralBurst_Single;
   DMA_Init(DMA1_Stream4, &DMA_InitStructure);
-  DMA_Cmd(DMA1_Stream4, ENABLE);
 
+// viet them RX UART
+  DMA_InitStructure.DMA_Memory0BaseAddr = (uint32_t)RxDMA;
+  DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralToMemory;
+  DMA_InitStructure.DMA_BufferSize = DMALENGHT;
+  DMA_Init(DMA1_Stream2, &DMA_InitStructure);
+  DMA_Cmd(DMA1_Stream2, ENABLE);
+
+  /* Enable DMA Interrupt to the highest priority */
+  NVIC_InitStructure.NVIC_IRQChannel = DMA1_Stream2_IRQn;
+  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;
+  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+  NVIC_Init(&NVIC_InitStructure);
+
+  /* Transfer complete interrupt mask */
+  DMA_ITConfig(DMA1_Stream2, DMA_IT_TC, ENABLE);
+}
+
+void DMA1_Stream2_IRQHandler(void)
+{
+  uint8_t i;
+  GPIO_SetBits(GPIOD,GPIO_Pin_13);
+  /* Clear the DMA1_Stream2 TCIF2 pending bit */
+  DMA_ClearITPendingBit(DMA1_Stream2, DMA_IT_TCIF2);
+  for(i=0; i<DMALENGHT; i++)
+    {
+      BufferEEPROMWrite[index + i] = RxDMA[i];
+      if ((RxDMA[i]=='*') && (BufferEEPROMWrite[index + i-1]=='*') && (BufferEEPROMWrite[index + i-2]=='*' )&& (BufferEEPROMWrite[index + i-3]=='*' ))
+      {
+        //set flag =1;
+        GPIO_SetBits(GPIOD,GPIO_Pin_12);
+      }
+    }
+  index = index + DMALENGHT;
+
+  DMA_Cmd(DMA1_Stream2, ENABLE);
 }
