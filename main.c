@@ -2,15 +2,9 @@
 #include "system_timetick.h"
 
 #define I2C_TIMEOUT_MAX         ((uint32_t)(10 * 5000))
-#define BUFFER_SIZE2             (countof(aTxBuffer2)-1)
 #define DMALENGHT             4
-#define BUFFER_EEPROM_WRITE             20
+#define BUFFER_EEPROM_WRITE             80
 
-#define countof(a) (sizeof(a) / sizeof(*(a)))
-typedef enum {FAILED = 0, PASSED = !FAILED} TestStatus;
-
-TestStatus FlagCompare=FAILED;
-TestStatus Buffercmp(uint8_t* pBuffer1, uint8_t* pBuffer2, uint16_t BufferLength);
 void init_I2C1(void);
 void usart_init(void);
 
@@ -19,58 +13,87 @@ uint8_t Read_24Cxx(uint8_t AddrSlave, uint8_t *rxbuffData, uint16_t read_address
 void delay_01ms(uint16_t period);
 uint32_t strlenbuff(uint8_t *str);
 uint8_t Write_Page(uint8_t AddrSlave, uint8_t *txbuffData, uint16_t write_address, uint32_t NumberByteWrite);
-// uint8_t WaitForStandbyState(uint8_t AddrSlave);
-
+uint16_t ParseCharacterFromBuffer(void);
+void strcopydata(uint8_t *aTxBuffer2,uint8_t *BufferEEPROMWrite, uint32_t lenbuff);
+void ResetBuffer(uint8_t *BufferEEPROMWrite,uint32_t lenght);
 //rxbuff cho DMA size 4
 uint8_t RxDMA[DMALENGHT];
 uint8_t BufferEEPROMWrite[BUFFER_EEPROM_WRITE];
 uint16_t  index = 0;
-
+uint8_t FlagCheckFullRxDma=0;
+uint8_t FlagCheckResendTxDMA=0;
+DMA_InitTypeDef   DMA_InitStructure;
 //
-uint8_t aTxBuffer2[] = "thanh dep trai ganh btl cua 3 em kia. thay thanh dep trai du khong. chu thanh dep trai thay du lam co dieu tai sao no chay sai tao cung khong hieu tai sao day la project test choi cho vui thoi ma";
-uint8_t aRxBuffer2[BUFFER_SIZE2];
-uint32_t lenbuff;
 int main(void)
 {
   /* Enable SysTick at 10ms interrupt */
   SysTick_Config(SystemCoreClock/100);
   init_I2C1();
-	usart_init();
+  usart_init();
+  uint16_t address=0;
+  uint32_t lastcharacter=0;
+  uint32_t lenbuff=0;
 
-  lenbuff=strlenbuff(aTxBuffer2);
-  Write_Page(0xA0,aTxBuffer2,0x00ff,lenbuff);
-        delay_01ms(1000);
-  if (Read_24Cxx(0xA0,aRxBuffer2,0x00ff,lenbuff)==0xFF)
-    {
-       while(1)
+   while(1)
+     {
+        if(FlagCheckFullRxDma==1)
         {
-          GPIO_ToggleBits(GPIOD, GPIO_Pin_13);
-          delay_01ms(10000);
-        }
-    }
-  delay_01ms(1000);
-
-  FlagCompare=Buffercmp(aRxBuffer2,aTxBuffer2,lenbuff);
-   if (FlagCompare==PASSED)
-      {
-    		DMA_Cmd(DMA1_Stream4, ENABLE);
-
-          while(1)
-          {
-            GPIO_ToggleBits(GPIOD, GPIO_Pin_14);
-            delay_01ms(5000);
-          }
-      }
-   else if (FlagCompare!=PASSED)
-      {
-        while(1)
-        {
+          //format bufferrx xxxxDataaaaaaaaa0000****A
+          // voi xxxx:adress 0-8192
+          //Dataaaaaaa :data need to write
+          // 0000: waste byte
+          // **** : End character to recoginze transmit complete
+          // A: number of waste byte (example 0000 -> A=4)
+          lenbuff=strlenbuff(BufferEEPROMWrite);
+        // call function split character from BufferEEPROMWrite
+          address=ParseCharacterFromBuffer();
+          lastcharacter=BufferEEPROMWrite[lenbuff-1]-'0';
+          lenbuff=lenbuff - 4 - lastcharacter - 4 - 1;
+          uint8_t aTxBuffer2[BUFFER_EEPROM_WRITE];
+          uint8_t aRxBuffer2[BUFFER_EEPROM_WRITE];
+          // uint8_t aTxBuffer2[80];
+          // define aTxBuffer2 have lenght = data
+          // call function copy data from BufferEEPROMWrite to aTxBuffer2
+          strcopydata(aTxBuffer2,BufferEEPROMWrite,lenbuff);
+          Write_Page(0xA0,aTxBuffer2,address,lenbuff);
+          delay_01ms(1000);
+          if (Read_24Cxx(0xA0,aRxBuffer2,address,lenbuff)==0xFF)
+              {
+                while(1)
+                {
+                  GPIO_ToggleBits(GPIOD, GPIO_Pin_13);
+                  delay_01ms(10000);
+                }
+              }
+          delay_01ms(1000);
           GPIO_ToggleBits(GPIOD, GPIO_Pin_15);
-            delay_01ms(10000);
+          if (FlagCheckResendTxDMA==0)
+          {
+            DMA_ClearFlag(DMA1_Stream4, DMA_FLAG_TCIF4);
+            DMA_InitStructure.DMA_Memory0BaseAddr = (uint32_t)aRxBuffer2;
+            DMA_InitStructure.DMA_BufferSize = lenbuff;
+            DMA_InitStructure.DMA_DIR = DMA_DIR_MemoryToPeripheral;
+            DMA_Init(DMA1_Stream4, &DMA_InitStructure);
+            DMA_Cmd(DMA1_Stream4, ENABLE);
+          }
+          else
+          {
+            DMA_ClearFlag(DMA1_Stream4, DMA_FLAG_TCIF4);
+            DMA1_Stream4->NDTR = lenbuff;
+            DMA_Cmd(DMA1_Stream4, ENABLE);
+          }
+          FlagCheckFullRxDma=0;
+          FlagCheckResendTxDMA=1;
+          index=0;
+          ResetBuffer(BufferEEPROMWrite,lenbuff+12);
+          delay_01ms(5000);
         }
-
-      }
-   while(1);
+        else
+        {
+          GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
+          delay_01ms(5000);
+        }
+     }
 }
 
 
@@ -78,14 +101,11 @@ void init_I2C1(void){
   GPIO_InitTypeDef GPIO_InitStruct; // this is for the GPIO pins used as I2C1SDA and I2C1SCL
   GPIO_InitTypeDef GPIO_Output;     // For some debugging LEDs
   I2C_InitTypeDef I2C_InitStruct; // this is for the I2C1 initilization
-
   /* enable APB1 peripheral clock for I2C1*/
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_I2C1, ENABLE);
-
   /* enable the peripheral clock for the pins used by
    PB6 for I2C SCL and PB9 for I2C1_SDL*/
   RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);
-
   /* This sequence sets up the I2C1SDA and I2C1SCL pins
    * so they work correctly with the I2C1 peripheral
    */
@@ -97,7 +117,6 @@ void init_I2C1(void){
   GPIO_Init(GPIOB,&GPIO_InitStruct);// now all the values are passed to the GPIO_Init()
 
   RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOD, ENABLE);
-
    /* Configure PD12, PD13, PD14 and PD15 in output pushpull mode */
   GPIO_Output.GPIO_Pin = GPIO_Pin_12 | GPIO_Pin_13| GPIO_Pin_14| GPIO_Pin_15;
   GPIO_Output.GPIO_Mode = GPIO_Mode_OUT;
@@ -105,18 +124,15 @@ void init_I2C1(void){
   GPIO_Output.GPIO_Speed = GPIO_Speed_100MHz;
   GPIO_Output.GPIO_PuPd = GPIO_PuPd_NOPULL;
   GPIO_Init(GPIOD,&GPIO_Output);
-
   /* The I2C1_SCL and I2C1_SDA pins are now connected to their AF
    * so that the I2C1 can take over control of the
    * pins
    */
   GPIO_PinAFConfig(GPIOB, GPIO_PinSource6, GPIO_AF_I2C1); //
   GPIO_PinAFConfig(GPIOB, GPIO_PinSource9, GPIO_AF_I2C1);
-
    /* Configure I2C1 */
   I2C_DeInit(I2C1);
    /* Enable the I2C peripheral */
-
    /* Set the I2C structure parameters */
   I2C_InitStruct.I2C_Mode = I2C_Mode_I2C;
   I2C_InitStruct.I2C_DutyCycle = I2C_DutyCycle_2;
@@ -250,6 +266,18 @@ uint8_t Write_Page(uint8_t AddrSlave, uint8_t *txbuffData, uint16_t write_addres
   //not aligned
   else
   {
+    if (SinglePage <RemainAddressAligned)
+    {
+      if ( Write_24Cxx(AddrSlave,txbuffData,write_address,SinglePage)==0xFF)
+       {
+         while(1)
+         {
+           GPIO_ToggleBits(GPIOD, GPIO_Pin_12);
+           delay_01ms(10000);
+         }
+       }
+    }
+    else{
       if ( Write_24Cxx(AddrSlave,txbuffData,write_address,RemainAddressAligned)==0xFF)
        {
          while(1)
@@ -291,8 +319,10 @@ uint8_t Write_Page(uint8_t AddrSlave, uint8_t *txbuffData, uint16_t write_addres
            }
           }
         }
-				return 0;
+				
+    }
   }
+	return 0;
 }
 
 
@@ -404,24 +434,7 @@ uint8_t Read_24Cxx(uint8_t AddrSlave, uint8_t *rxbuffData,  uint16_t read_addres
   return 0;
 }
 
-TestStatus Buffercmp(uint8_t* pBuffer1, uint8_t* pBuffer2, uint16_t BufferLength)
-{
-  while(BufferLength--)
-  {
-    if(*pBuffer1 != *pBuffer2)
-    {
-      return FAILED;
-    }
-
-    pBuffer1++;
-    pBuffer2++;
-  }
-
-  return PASSED;
-}
-
 void delay_01ms(uint16_t period){
-
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM6, ENABLE);
     TIM6->PSC = 8399;   // clk = SystemCoreClock /2 /(PSC+1) = 10KHz
     TIM6->ARR = period-1;
@@ -446,27 +459,22 @@ uint32_t strlenbuff(uint8_t *str)
       str++;
     }
   return counter;
-
 }
 
 void usart_init(void)
 {
   GPIO_InitTypeDef  GPIO_InitStructure;
   USART_InitTypeDef USART_InitStructure;
-  DMA_InitTypeDef   DMA_InitStructure;
 	NVIC_InitTypeDef  NVIC_InitStructure;
-
   /* Enable GPIO clock */
   RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);
   /* Enable UART clock */
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_UART4, ENABLE);
   /* Enable DMA1 clock */
   RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_DMA1, ENABLE);
-
   /* Connect UART4 pins to AF2 */
   GPIO_PinAFConfig(GPIOA, GPIO_PinSource0, GPIO_AF_UART4);
   GPIO_PinAFConfig(GPIOA, GPIO_PinSource1, GPIO_AF_UART4);
-
   /* GPIO Configuration for UART4 Tx */
   GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_0;
   GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_AF;
@@ -474,12 +482,10 @@ void usart_init(void)
   GPIO_InitStructure.GPIO_PuPd  = GPIO_PuPd_UP;
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
   GPIO_Init(GPIOA, &GPIO_InitStructure);
-
   /* GPIO Configuration for USART Rx */
   GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_1;
   GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_AF;
   GPIO_Init(GPIOA, &GPIO_InitStructure);
-
   /* USARTx configured as follow:
     - BaudRate = 115200 baud
     - Word Length = 8 Bits
@@ -495,21 +501,20 @@ void usart_init(void)
   USART_InitStructure.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
   USART_InitStructure.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
   USART_Init(UART4, &USART_InitStructure);
-
   /* Enable USART */
   USART_Cmd(UART4, ENABLE);
   /* Enable UART4 DMA */
   /* DMA1 Stream2 Channel4 for USART4 Tx configuration */
   USART_DMACmd(UART4, USART_DMAReq_Tx, ENABLE);
   USART_DMACmd(UART4, USART_DMAReq_Rx, ENABLE);
-
-
   /* DMA1 Stream2 Channel4 for USART4 Tx configuration */
   DMA_InitStructure.DMA_Channel = DMA_Channel_4;
   DMA_InitStructure.DMA_PeripheralBaseAddr = (uint32_t)&UART4->DR;
-  DMA_InitStructure.DMA_Memory0BaseAddr = (uint32_t)aRxBuffer2;
-  DMA_InitStructure.DMA_DIR = DMA_DIR_MemoryToPeripheral;
-  DMA_InitStructure.DMA_BufferSize = BUFFER_SIZE2;
+   // DMA_InitStructure.DMA_Memory0BaseAddr = (uint32_t)aRxBuffer2;
+  //DMA_InitStructure.DMA_Memory0BaseAddr = (uint32_t)aTxBuffer2;
+  // DMA_InitStructure.DMA_BufferSize = BUFFER_EEPROM_WRITE;
+  // DMA_InitStructure.DMA_DIR = DMA_DIR_MemoryToPeripheral;
+  // DMA_InitStructure.DMA_BufferSize = BUFFER_SIZE2;
   DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
   DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
   DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
@@ -521,21 +526,18 @@ void usart_init(void)
   DMA_InitStructure.DMA_MemoryBurst = DMA_MemoryBurst_Single;
   DMA_InitStructure.DMA_PeripheralBurst = DMA_PeripheralBurst_Single;
   DMA_Init(DMA1_Stream4, &DMA_InitStructure);
-
 // viet them RX UART
   DMA_InitStructure.DMA_Memory0BaseAddr = (uint32_t)RxDMA;
   DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralToMemory;
   DMA_InitStructure.DMA_BufferSize = DMALENGHT;
   DMA_Init(DMA1_Stream2, &DMA_InitStructure);
   DMA_Cmd(DMA1_Stream2, ENABLE);
-
   /* Enable DMA Interrupt to the highest priority */
   NVIC_InitStructure.NVIC_IRQChannel = DMA1_Stream2_IRQn;
   NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;
   NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
   NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
   NVIC_Init(&NVIC_InitStructure);
-
   /* Transfer complete interrupt mask */
   DMA_ITConfig(DMA1_Stream2, DMA_IT_TC, ENABLE);
 }
@@ -543,7 +545,7 @@ void usart_init(void)
 void DMA1_Stream2_IRQHandler(void)
 {
   uint8_t i;
-  GPIO_SetBits(GPIOD,GPIO_Pin_13);
+  GPIO_ToggleBits(GPIOD, GPIO_Pin_14);
   /* Clear the DMA1_Stream2 TCIF2 pending bit */
   DMA_ClearITPendingBit(DMA1_Stream2, DMA_IT_TCIF2);
   for(i=0; i<DMALENGHT; i++)
@@ -551,11 +553,32 @@ void DMA1_Stream2_IRQHandler(void)
       BufferEEPROMWrite[index + i] = RxDMA[i];
       if ((RxDMA[i]=='*') && (BufferEEPROMWrite[index + i-1]=='*') && (BufferEEPROMWrite[index + i-2]=='*' )&& (BufferEEPROMWrite[index + i-3]=='*' ))
       {
-        //set flag =1;
-        GPIO_SetBits(GPIOD,GPIO_Pin_12);
+        FlagCheckFullRxDma=1;
       }
     }
   index = index + DMALENGHT;
-
   DMA_Cmd(DMA1_Stream2, ENABLE);
+}
+
+uint16_t ParseCharacterFromBuffer(void)
+{
+  //variable global compute lenght buffer
+  uint16_t temp;
+  temp=( (BufferEEPROMWrite[0]-'0')*1000 + (BufferEEPROMWrite[1]-'0')*100+ (BufferEEPROMWrite[2]-'0')*10+(BufferEEPROMWrite[3]-'0'));
+  return temp;
+}
+
+void strcopydata(uint8_t *aTxBuffer2,uint8_t *BufferEEPROMWrite, uint32_t lenbuff)
+{
+  int i;
+  for(i=0;i<lenbuff;i++)
+    {
+      aTxBuffer2[i]=BufferEEPROMWrite[i+4];
+    }
+}
+void ResetBuffer(uint8_t *BufferEEPROMWrite,uint32_t lenght)
+{
+  uint8_t i;
+  for (i=0;i<lenght;i++)
+    BufferEEPROMWrite[i]='\0';
 }

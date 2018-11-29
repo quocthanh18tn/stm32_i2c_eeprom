@@ -151,52 +151,42 @@
         <Ww>
           <count>0</count>
           <WinNumber>1</WinNumber>
-          <ItemText>aRxBuffer2</ItemText>
+          <ItemText>lenbuff,0x0A</ItemText>
         </Ww>
         <Ww>
           <count>1</count>
           <WinNumber>1</WinNumber>
-          <ItemText>FlagCompare</ItemText>
+          <ItemText>address</ItemText>
         </Ww>
         <Ww>
           <count>2</count>
           <WinNumber>1</WinNumber>
-          <ItemText>aTxBuffer2</ItemText>
+          <ItemText>BufferEEPROMWrite</ItemText>
         </Ww>
         <Ww>
           <count>3</count>
           <WinNumber>1</WinNumber>
-          <ItemText>Page</ItemText>
+          <ItemText>lastcharacter</ItemText>
         </Ww>
         <Ww>
           <count>4</count>
           <WinNumber>1</WinNumber>
-          <ItemText>SinglePage</ItemText>
+          <ItemText>aTxBuffer2[8]</ItemText>
         </Ww>
         <Ww>
           <count>5</count>
           <WinNumber>1</WinNumber>
-          <ItemText>AddressAligned</ItemText>
+          <ItemText>aTxBuffer2</ItemText>
         </Ww>
         <Ww>
           <count>6</count>
           <WinNumber>1</WinNumber>
-          <ItemText>RemainAddressAligned</ItemText>
+          <ItemText>testlen1,0x0A</ItemText>
         </Ww>
         <Ww>
           <count>7</count>
           <WinNumber>1</WinNumber>
-          <ItemText>AddrSlave</ItemText>
-        </Ww>
-        <Ww>
-          <count>8</count>
-          <WinNumber>1</WinNumber>
-          <ItemText>i</ItemText>
-        </Ww>
-        <Ww>
-          <count>9</count>
-          <WinNumber>1</WinNumber>
-          <ItemText>BufferEEPROMWrite</ItemText>
+          <ItemText>testlast,0x0A</ItemText>
         </Ww>
       </WatchWindow1>
       <Tracepoint>
