@@ -7,11 +7,15 @@
 
 void init_I2C1(void);
 void usart_init(void);
-
+//i2c have 256pages, each page 32bytes
+//write bytes to eeprom in one pages
 uint8_t Write_24Cxx(uint8_t AddrSlave, uint8_t *txbuffData,  uint16_t write_address, uint32_t  NumberByteWrite );
+// read bytes from eeprom from read_address to read_address+Number...
 uint8_t Read_24Cxx(uint8_t AddrSlave, uint8_t *rxbuffData, uint16_t read_address, uint32_t  NumberByteRead );
 void delay_01ms(uint16_t period);
+// tuong duong strlen trong c
 uint32_t strlenbuff(uint8_t *str);
+//
 uint8_t Write_Page(uint8_t AddrSlave, uint8_t *txbuffData, uint16_t write_address, uint32_t NumberByteWrite);
 uint16_t ParseCharacterFromBuffer(void);
 void strcopydata(uint8_t *aTxBuffer2,uint8_t *BufferEEPROMWrite, uint32_t lenbuff);
@@ -33,31 +37,38 @@ int main(void)
   uint16_t address=0;
   uint32_t lastcharacter=0;
   uint32_t lenbuff=0;
-
+  uint8_t  modeWriteOrRead=0;
    while(1)
      {
         if(FlagCheckFullRxDma==1)
         {
-          //format bufferrx xxxxDataaaaaaaaa0000****A
+          //format bufferrx xxxxRDataaaaaaaaa0000****A
           // voi xxxx:adress 0-8192
+          //R=0: mode read
+          // R=1: mode write
           //Dataaaaaaa :data need to write
           // 0000: waste byte
           // **** : End character to recoginze transmit complete
           // A: number of waste byte (example 0000 -> A=4)
           lenbuff=strlenbuff(BufferEEPROMWrite);
         // call function split character from BufferEEPROMWrite
-          address=ParseCharacterFromBuffer();
-          lastcharacter=BufferEEPROMWrite[lenbuff-1]-'0';
-          lenbuff=lenbuff - 4 - lastcharacter - 4 - 1;
-          uint8_t aTxBuffer2[BUFFER_EEPROM_WRITE];
-          uint8_t aRxBuffer2[BUFFER_EEPROM_WRITE];
-          // uint8_t aTxBuffer2[80];
-          // define aTxBuffer2 have lenght = data
-          // call function copy data from BufferEEPROMWrite to aTxBuffer2
-          strcopydata(aTxBuffer2,BufferEEPROMWrite,lenbuff);
-          Write_Page(0xA0,aTxBuffer2,address,lenbuff);
-          delay_01ms(1000);
-          if (Read_24Cxx(0xA0,aRxBuffer2,address,lenbuff)==0xFF)
+          address=ParseCharacterFromBuffer(); // calculate address
+          lastcharacter=BufferEEPROMWrite[lenbuff-1]-'0';//return number of byte rac
+          modeWriteOrRead=BufferEEPROMWrite[4]-'0';// considerate mode
+          lenbuff=lenbuff - 4 - 1 - lastcharacter - 4 - 1;//lenght of data
+          if (modeWriteOrRead==1)
+          {
+          	uint8_t aTxBuffer2[BUFFER_EEPROM_WRITE];
+          	strcopydata(aTxBuffer2,BufferEEPROMWrite,lenbuff);
+            Write_Page(0xA0,aTxBuffer2,address,lenbuff);
+            GPIO_ToggleBits(GPIOD, GPIO_Pin_14);
+            delay_01ms(1000);
+          }
+          else
+          {
+          	uint32_t lenbuffbyte = (BufferEEPROMWrite[5]-'0')*1000 + (BufferEEPROMWrite[6]-'0')*100 +(BufferEEPROMWrite[7]-'0')*10+(BufferEEPROMWrite[8]-'0');
+           	uint8_t aRxBuffer2[BUFFER_EEPROM_WRITE];
+              if (Read_24Cxx(0xA0,aRxBuffer2,address,lenbuffbyte)==0xFF)
               {
                 while(1)
                 {
@@ -65,28 +76,29 @@ int main(void)
                   delay_01ms(10000);
                 }
               }
-          delay_01ms(1000);
-          GPIO_ToggleBits(GPIOD, GPIO_Pin_15);
-          if (FlagCheckResendTxDMA==0)
-          {
-            DMA_ClearFlag(DMA1_Stream4, DMA_FLAG_TCIF4);
-            DMA_InitStructure.DMA_Memory0BaseAddr = (uint32_t)aRxBuffer2;
-            DMA_InitStructure.DMA_BufferSize = lenbuff;
-            DMA_InitStructure.DMA_DIR = DMA_DIR_MemoryToPeripheral;
-            DMA_Init(DMA1_Stream4, &DMA_InitStructure);
-            DMA_Cmd(DMA1_Stream4, ENABLE);
+              delay_01ms(1000);
+              GPIO_ToggleBits(GPIOD, GPIO_Pin_15);
+              if (FlagCheckResendTxDMA==0)
+              {
+                DMA_ClearFlag(DMA1_Stream4, DMA_FLAG_TCIF4);
+                DMA_InitStructure.DMA_Memory0BaseAddr = (uint32_t)aRxBuffer2;
+                DMA_InitStructure.DMA_BufferSize = lenbuffbyte;
+                DMA_InitStructure.DMA_DIR = DMA_DIR_MemoryToPeripheral;
+                DMA_Init(DMA1_Stream4, &DMA_InitStructure);
+                DMA_Cmd(DMA1_Stream4, ENABLE);
+              }
+              else
+              {
+                DMA_ClearFlag(DMA1_Stream4, DMA_FLAG_TCIF4);
+                DMA1_Stream4->NDTR = lenbuffbyte;
+                DMA_Cmd(DMA1_Stream4, ENABLE);
+              }
+              FlagCheckResendTxDMA=1;
+              delay_01ms(5000);
           }
-          else
-          {
-            DMA_ClearFlag(DMA1_Stream4, DMA_FLAG_TCIF4);
-            DMA1_Stream4->NDTR = lenbuff;
-            DMA_Cmd(DMA1_Stream4, ENABLE);
-          }
-          FlagCheckFullRxDma=0;
-          FlagCheckResendTxDMA=1;
-          index=0;
-          ResetBuffer(BufferEEPROMWrite,lenbuff+12);
-          delay_01ms(5000);
+              index=0;
+              ResetBuffer(BufferEEPROMWrite,lenbuff+10+lastcharacter);
+              FlagCheckFullRxDma=0;
         }
         else
         {
@@ -319,7 +331,7 @@ uint8_t Write_Page(uint8_t AddrSlave, uint8_t *txbuffData, uint16_t write_addres
            }
           }
         }
-				
+
     }
   }
 	return 0;
@@ -375,9 +387,7 @@ uint8_t Read_24Cxx(uint8_t AddrSlave, uint8_t *rxbuffData,  uint16_t read_addres
       if ((timeout--) == 0)
           return 0xFF;
     }
-
  //feature thanh create
-//dont know
   I2C_GenerateSTART(I2C1, ENABLE);
   /* Test on I2C1 EV6 and clear it */
   timeout = I2C_TIMEOUT_MAX; /* Initialize timeout value */
@@ -545,7 +555,6 @@ void usart_init(void)
 void DMA1_Stream2_IRQHandler(void)
 {
   uint8_t i;
-  GPIO_ToggleBits(GPIOD, GPIO_Pin_14);
   /* Clear the DMA1_Stream2 TCIF2 pending bit */
   DMA_ClearITPendingBit(DMA1_Stream2, DMA_IT_TCIF2);
   for(i=0; i<DMALENGHT; i++)
@@ -573,7 +582,7 @@ void strcopydata(uint8_t *aTxBuffer2,uint8_t *BufferEEPROMWrite, uint32_t lenbuf
   int i;
   for(i=0;i<lenbuff;i++)
     {
-      aTxBuffer2[i]=BufferEEPROMWrite[i+4];
+      aTxBuffer2[i]=BufferEEPROMWrite[i+5];
     }
 }
 void ResetBuffer(uint8_t *BufferEEPROMWrite,uint32_t lenght)
